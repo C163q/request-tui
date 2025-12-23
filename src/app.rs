@@ -49,10 +49,10 @@ impl App {
 
     pub fn run(mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
         while self.running {
+            self.handle_async();
             terminal.draw(|f| {
                 f.render_widget(&mut self, f.area());
             })?;
-            self.handle_async();
             self.handle_event()?;
         }
         Ok(())
@@ -82,8 +82,8 @@ impl App {
     }
 
     #[inline]
-    pub(crate) fn download_list_widgets(&mut self) -> (&mut DownloadList, &mut Vec<WidgetType>) {
-        (&mut self.data.downloading, &mut self.widgets)
+    pub(crate) fn destruct_data(&mut self) -> (&mut DownloadList, &mut Vec<WidgetType>, &mut FinishList) {
+        (&mut self.data.downloading, &mut self.widgets, &mut self.data.finished)
     }
 
     #[inline]
@@ -94,11 +94,6 @@ impl App {
     #[inline]
     pub fn finish_list_mut(&mut self) -> &mut FinishList {
         self.data.finished_mut()
-    }
-
-    #[inline]
-    pub(crate) fn finish_list_widgets(&mut self) -> (&mut FinishList, &mut Vec<WidgetType>) {
-        (&mut self.data.finished, &mut self.widgets)
     }
 
     // 我们让页面至少以10FPS的频率进行刷新，而不会因为没有事件而阻塞
@@ -208,8 +203,8 @@ impl App {
         match selected {
             0 => {
                 self.data
-                    .downloading_mut()
-                    .handle_key_event(key, &mut self.widgets);
+                    .downloading
+                    .handle_key_event(key, &mut self.widgets, &mut self.data.finished);
             }
             1 => {
                 self.data
@@ -320,5 +315,6 @@ impl AppData {
     #[inline]
     pub fn handle_async(&mut self) {
         self.downloading.handle_async(&mut self.finished);
+        self.finished.handle_async();
     }
 }

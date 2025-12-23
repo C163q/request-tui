@@ -82,6 +82,11 @@ impl StatefulWidget for &mut FinishedTask {
             Constraint::Min(1),
         ])
         .areas(area);
+        let bar = Layout::horizontal([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ]).split(bar)[1];
 
         // 文件名
         Paragraph::new(self.filepath.to_string_lossy())
@@ -204,7 +209,7 @@ impl FinishList {
 
         match self.selected {
             Some(i) => {
-                if i == 0 && i >= len {
+                if i == 0 || i >= len {
                     self.selected = Some(len - 1);
                 } else {
                     self.selected = Some(i - 1);
@@ -224,7 +229,7 @@ impl FinishList {
         app: &mut App,
         message: FinishListMessage,
     ) -> Option<FinishListMessage> {
-        let (this_widget, widgets) = app.finish_list_widgets();
+        let (_, widgets, this_widget) = app.destruct_data();
         this_widget.respond_to_message_inner(message, widgets)
     }
 
@@ -257,6 +262,12 @@ impl FinishList {
         let mut opt_message = self.get_key_message(key);
         while let Some(message) = opt_message {
             opt_message = self.respond_to_message_inner(message, widgets);
+        }
+    }
+
+    pub fn handle_async(&mut self) {
+        if self.selected.is_none() && !self.list.is_empty() {
+            self.selected = Some(0);
         }
     }
 }

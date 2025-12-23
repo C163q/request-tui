@@ -1,13 +1,23 @@
 use std::{
-    fmt::{self, Display, Formatter}, path::{Path, PathBuf}, sync::{Arc, Mutex}, time::{Duration, Instant}
+    fmt::{self, Display, Formatter},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use ratatui::widgets::{Paragraph, Widget};
 use ratatui::{prelude::*, style::palette::tailwind, widgets::Gauge};
-use tokio::{fs::File, runtime::Runtime, sync::{mpsc, oneshot}};
+use tokio::{
+    fs::File,
+    runtime::Runtime,
+    sync::{mpsc, oneshot},
+};
 use url::Url;
 
-use crate::{app::send::DownloadRequest, window::common::{self, Fill}};
+use crate::{
+    app::send::DownloadRequest,
+    window::common::{self, Fill},
+};
 
 pub mod resolve;
 
@@ -188,6 +198,13 @@ impl StatefulWidget for &mut TaskState {
         ])
         .areas(area);
 
+        let bar = Layout::horizontal([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(bar)[1];
+
         // 文件名
         Paragraph::new(self.filepath.to_string_lossy())
             .style(text_style)
@@ -246,15 +263,20 @@ impl StatefulWidget for &mut TaskState {
 pub struct Task {
     request: DownloadRequest,
     inner: TaskInner,
-    reporter: oneshot::Sender<TaskResult>,
+    handler: SignalHandler,
 }
 
 impl Task {
-    pub fn new(state: Arc<Mutex<TaskState>>, request: DownloadRequest, reporter: oneshot::Sender<TaskResult>) -> Self {
+    pub fn new(
+        state: Arc<Mutex<TaskState>>,
+        request: DownloadRequest,
+        reporter: oneshot::Sender<TaskResult>,
+        command_recv: oneshot::Receiver<TaskCommand>,
+    ) -> Self {
         Task {
             request,
             inner: TaskInner::new(state),
-            reporter,
+            handler: SignalHandler::new(reporter, command_recv),
         }
     }
 
@@ -265,12 +287,16 @@ impl Task {
     pub fn file(&self) -> Option<&File> {
         self.inner.file()
     }
+
+    pub fn release_state(self) -> Arc<Mutex<TaskState>> {
+        self.inner.state
+    }
 }
 
 #[derive(Debug)]
 struct TaskInner {
-    state: Arc<Mutex<TaskState>>,
-    file: Option<File>,
+    pub state: Arc<Mutex<TaskState>>,
+    pub file: Option<File>,
 }
 
 impl TaskInner {
@@ -280,6 +306,21 @@ impl TaskInner {
 
     pub fn file(&self) -> Option<&File> {
         self.file.as_ref()
+    }
+}
+
+#[derive(Debug)]
+struct SignalHandler {
+    pub reporter: oneshot::Sender<TaskResult>,
+    pub receiver: oneshot::Receiver<TaskCommand>,
+}
+
+impl SignalHandler {
+    pub fn new(
+        reporter: oneshot::Sender<TaskResult>,
+        receiver: oneshot::Receiver<TaskCommand>,
+    ) -> Self {
+        SignalHandler { reporter, receiver }
     }
 }
 
@@ -326,6 +367,26 @@ impl TaskResult {
         TaskResult::new(TaskFinalStage::FailToWrite, Some(message))
     }
 
+    pub fn new_failed_to_resume_file(message: String) -> Self {
+        TaskResult::new(TaskFinalStage::FailToResumeFile, Some(message))
+    }
+
+    pub fn new_file_corrupted(message: String) -> Self {
+        TaskResult::new(TaskFinalStage::FileCorrupted, Some(message))
+    }
+
+    pub fn new_failed_to_resume_connection(message: String) -> Self {
+        TaskResult::new(TaskFinalStage::FailToResumeConnection, Some(message))
+    }
+
+    pub fn new_interrupted() -> Self {
+        TaskResult::new(TaskFinalStage::Interrupted, None)
+    }
+
+    pub fn new_abort() -> Self {
+        TaskResult::new(TaskFinalStage::Abort, None)
+    }
+
     pub fn new_finished() -> Self {
         TaskResult::new(TaskFinalStage::Finished, None)
     }
@@ -350,7 +411,11 @@ pub enum TaskFinalStage {
     FailToCreateFile,
     FailToDownload,
     FailToWrite,
+    FailToResumeFile,
+    FileCorrupted,
+    FailToResumeConnection,
     Interrupted,
+    Abort,
     Finished,
     UnknownError,
 }
@@ -359,13 +424,23 @@ impl Display for TaskFinalStage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             TaskFinalStage::UnknownUrl => write!(f, "Unknown URL"),
-            TaskFinalStage::FailToConnection => write!(f, "Failed to connect"),
+            TaskFinalStage::FailToConnection => write!(f, "Connection Failed"),
             TaskFinalStage::FailToCreateFile => write!(f, "Failed to create file"),
             TaskFinalStage::FailToDownload => write!(f, "Failed to download"),
             TaskFinalStage::FailToWrite => write!(f, "Failed to write to file"),
-            TaskFinalStage::Interrupted => write!(f, "Interrupted"),
+            TaskFinalStage::FailToResumeFile => write!(f, "Cannot open file"),
+            TaskFinalStage::FileCorrupted => write!(f, "File corrupted"),
+            TaskFinalStage::FailToResumeConnection => write!(f, "Connection failed"),
+            TaskFinalStage::Interrupted => write!(f, "Stopped"),
+            TaskFinalStage::Abort => write!(f, "Abort"),
             TaskFinalStage::Finished => write!(f, "Finished"),
             TaskFinalStage::UnknownError => write!(f, "Unknown error"),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TaskCommand {
+    Stop,
+    Abort,
 }

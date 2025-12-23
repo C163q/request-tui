@@ -2,30 +2,58 @@ use std::sync::{Arc, Mutex};
 
 use ratatui::widgets::StatefulWidget;
 use ratatui::{prelude::*, widgets::Paragraph};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
+use crate::app::send::Sender;
+use crate::app::task::TaskCommand;
 use crate::{
     app::task::{TaskFinalStage, TaskResult, TaskState},
     window::app::{FinishState, FinishedTask},
 };
 
+pub struct ListenerChannel {
+    pub result_recv: oneshot::Receiver<TaskResult>,
+
+    // 用于给Task发送指令
+    pub command_sender: Option<oneshot::Sender<TaskCommand>>,
+}
+
+impl ListenerChannel {
+    pub fn new(
+        result_recv: oneshot::Receiver<TaskResult>,
+        command_sender: oneshot::Sender<TaskCommand>,
+    ) -> Self {
+        ListenerChannel {
+            result_recv,
+            command_sender: Some(command_sender),
+        }
+    }
+}
+
 pub struct TaskListener {
     state: Arc<Mutex<TaskState>>,
-    result_recv: oneshot::Receiver<TaskResult>,
+    channel: ListenerChannel,
+
     // Task的结果，一旦接收后就存储在这里。
     // 如果是None表明Task还没有完成
     task_result: Option<TaskResult>,
     // 一个标志，表示结果是否已经被处理过
     processed: bool,
+    stopped: bool,
 }
 
 impl TaskListener {
-    pub fn new(state: Arc<Mutex<TaskState>>, result_recv: oneshot::Receiver<TaskResult>) -> Self {
+    pub fn new(
+        state: Arc<Mutex<TaskState>>,
+        result_recv: oneshot::Receiver<TaskResult>,
+        command_sender: oneshot::Sender<TaskCommand>,
+    ) -> Self {
         TaskListener {
             state,
-            result_recv,
+            channel: ListenerChannel::new(result_recv, command_sender),
             task_result: None,
             processed: false,
+            stopped: false,
         }
     }
 
@@ -62,13 +90,33 @@ impl TaskListener {
         )
     }
 
+    pub fn resume_task(
+        &mut self,
+        sender: &mut Sender,
+    ) -> Result<(), Box<mpsc::error::SendError<Arc<Mutex<TaskState>>>>> {
+        if !self.stopped {
+            return Ok(());
+        }
+
+        let ListenerChannel { result_recv, command_sender } = sender
+            .send_resume_request(self.state.clone())
+            .map_err(|t| Box::new(mpsc::error::SendError(t.0.release_state())))?;
+
+        self.stopped = false;
+        self.channel.command_sender = command_sender;
+        self.channel.result_recv = result_recv;
+        self.processed = false;
+        self.task_result = None;
+        Ok(())
+    }
+
     pub fn try_receive(&mut self) -> Option<&TaskResult> {
-        if self.task_result.is_some() || self.processed {
+        if self.task_result.is_some() || self.processed || self.stopped {
             // 已经接收过结果，直接返回
             return self.task_result.as_ref();
         }
 
-        match self.result_recv.try_recv() {
+        match self.result_recv_channel().try_recv() {
             Ok(task_result) => {
                 self.task_result = Some(task_result);
             }
@@ -81,6 +129,14 @@ impl TaskListener {
         }
 
         self.task_result.as_ref()
+    }
+
+    pub fn result_recv_channel(&mut self) -> &mut oneshot::Receiver<TaskResult> {
+        &mut self.channel.result_recv
+    }
+
+    pub fn command_sender_channel(&mut self) -> &mut Option<oneshot::Sender<TaskCommand>> {
+        &mut self.channel.command_sender
     }
 
     pub fn get_state_handler(&self) -> Arc<Mutex<TaskState>> {
@@ -97,6 +153,24 @@ impl TaskListener {
 
     pub fn mark_processed(&mut self) {
         self.processed = true;
+    }
+
+    pub fn mark_stopped(&mut self) {
+        self.stopped = true;
+    }
+
+    pub fn is_stopped(&mut self) -> bool {
+        self.stopped
+    }
+
+    pub fn send_command(&mut self, command: TaskCommand) {
+        let sender = self.command_sender_channel().take();
+        if let Some(sender) = sender
+            && !self.stopped
+        {
+            log::debug!("Sending command to task: {:?}", command);
+            let _ = sender.send(command);
+        }
     }
 }
 

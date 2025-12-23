@@ -4,7 +4,6 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget};
 use tui_textarea::TextArea;
 
 use crate::app::App;
-use crate::app::send::DownloadRequest;
 use crate::window::WidgetType;
 use crate::window::app::{DownloadList, DownloadListMessage};
 use crate::window::common::{self, InputMode, MessageTransfer, WidgetExt};
@@ -57,7 +56,7 @@ impl DownloadInput {
         for line in lines {
             DownloadList::respond_to_message(
                 app,
-                DownloadListMessage::AppendTask(DownloadRequest::new_normal(line)),
+                DownloadListMessage::AppendNewTask(line),
             );
         }
     }

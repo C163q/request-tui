@@ -6,8 +6,8 @@ use tokio::sync::mpsc;
 
 use crate::app::App;
 use crate::app::receive::TaskListener;
-use crate::app::send::{self, DownloadRequest};
-use crate::app::task::{Task, TaskFinalStage};
+use crate::app::send;
+use crate::app::task::{Task, TaskCommand, TaskFinalStage};
 use crate::window::WidgetType;
 use crate::window::app::FinishList;
 use crate::window::common::{self, Fill};
@@ -73,7 +73,7 @@ impl DownloadList {
 
         match self.selected {
             Some(i) => {
-                if i == 0 && i >= len {
+                if i == 0 || i >= len {
                     self.selected = Some(len - 1);
                 } else {
                     self.selected = Some(i - 1);
@@ -85,9 +85,53 @@ impl DownloadList {
         }
     }
 
-    pub fn append_task(&mut self, request: DownloadRequest) -> anyhow::Result<()> {
-        let listener = self.sender.send_request(request)?;
+    pub fn append_normal_task(&mut self, url: String) -> anyhow::Result<()> {
+        let listener = self.sender.send_normal_request(url)?;
         self.list.push(listener);
+        Ok(())
+    }
+
+    pub fn stop_task(&mut self, index: usize) -> anyhow::Result<()> {
+        if index >= self.list.len() {
+            return Err(anyhow::anyhow!("Index out of bounds"));
+        }
+
+        let listener = &mut self.list[index];
+        if listener.is_stopped() {
+            return Ok(());
+        }
+
+        listener.send_command(TaskCommand::Stop);
+        Ok(())
+    }
+
+    pub fn abort_task(&mut self, index: usize, finish_list: &mut FinishList) -> anyhow::Result<()> {
+        if index >= self.list.len() {
+            return Err(anyhow::anyhow!("Index out of bounds"));
+        }
+
+        let listener = &mut self.list[index];
+        if listener.is_stopped() {
+            self.move_to_finish_list(index, finish_list);
+            return Ok(());
+        }
+
+        listener.send_command(TaskCommand::Abort);
+        Ok(())
+    }
+
+    pub fn resume_task(
+        &mut self,
+        index: usize,
+        finish_list: &mut FinishList,
+    ) -> anyhow::Result<()> {
+        if index >= self.list.len() {
+            return Err(anyhow::anyhow!("Index out of bounds"));
+        }
+
+        if self.list[index].resume_task(&mut self.sender).is_err() {
+            self.move_to_finish_list(index, finish_list);
+        }
         Ok(())
     }
 
@@ -96,14 +140,15 @@ impl DownloadList {
         app: &mut App,
         message: DownloadListMessage,
     ) -> Option<DownloadListMessage> {
-        let (this_widget, widgets) = app.download_list_widgets();
-        this_widget.respond_to_message_inner(message, widgets)
+        let (this_widget, widgets, finish_list) = app.destruct_data();
+        this_widget.respond_to_message_inner(message, widgets, finish_list)
     }
 
     fn respond_to_message_inner(
         &mut self,
         message: DownloadListMessage,
         widgets: &mut Vec<WidgetType>,
+        finish_list: &mut FinishList,
     ) -> Option<DownloadListMessage> {
         match message {
             DownloadListMessage::GoUp => {
@@ -118,8 +163,39 @@ impl DownloadList {
                 widgets.push(WidgetType::new_download_input());
                 None
             }
-            DownloadListMessage::AppendTask(request) => {
-                self.append_task(request); // TODO: handle error
+            DownloadListMessage::AppendNewTask(request) => {
+                // FIXME: 应该之后会专门制作一个弹窗
+                self.append_normal_task(request); // TODO: handle error
+                None
+            }
+            DownloadListMessage::StopTask => {
+                if let Some(index) = self.selected {
+                    if index >= self.list.len() {
+                        self.selected = None;
+                        return None;
+                    }
+                    self.stop_task(index).unwrap();
+                }
+                None
+            }
+            DownloadListMessage::CancelTask => {
+                if let Some(index) = self.selected {
+                    if index >= self.list.len() {
+                        self.selected = None;
+                        return None;
+                    }
+                    self.abort_task(index, finish_list).unwrap();
+                }
+                None
+            }
+            DownloadListMessage::ContinueTask => {
+                if let Some(index) = self.selected {
+                    if index >= self.list.len() {
+                        self.selected = None;
+                        return None;
+                    }
+                    self.resume_task(index, finish_list).unwrap();
+                }
                 None
             }
         }
@@ -130,53 +206,80 @@ impl DownloadList {
             KeyCode::Up | KeyCode::Char('k') => Some(DownloadListMessage::GoUp),
             KeyCode::Down | KeyCode::Char('j') => Some(DownloadListMessage::GoDown),
             KeyCode::Char('a') => Some(DownloadListMessage::AppendTaskInput),
+            KeyCode::Char('s') => Some(DownloadListMessage::StopTask),
+            KeyCode::Char('c') => Some(DownloadListMessage::ContinueTask),
+            KeyCode::Char('x') => Some(DownloadListMessage::CancelTask),
             _ => None,
         }
     }
 
-    pub fn handle_key_event(&mut self, key: KeyEvent, widgets: &mut Vec<WidgetType>) {
+    pub fn handle_key_event(
+        &mut self,
+        key: KeyEvent,
+        widgets: &mut Vec<WidgetType>,
+        finish_list: &mut FinishList,
+    ) {
         let mut opt_message = self.get_key_message(key);
         while let Some(message) = opt_message {
-            opt_message = self.respond_to_message_inner(message, widgets);
+            opt_message = self.respond_to_message_inner(message, widgets, finish_list);
         }
     }
 
-    fn push_to_finish_list(
-        listener: &mut TaskListener,
-        finish_list: &mut FinishList,
-    ) {
+    fn push_to_finish_list(listener: &mut TaskListener, finish_list: &mut FinishList) {
         finish_list.push_task(listener.into_finished_task());
     }
 
+    fn move_to_finish_list(&mut self, index: usize, finish_list: &mut FinishList) {
+        Self::push_to_finish_list(&mut self.list[index], finish_list);
+        self.list.remove(index);
+        if let Some(selected) = self.selected {
+            if selected >= index && selected > 0 {
+                self.selected = Some(selected - 1);
+            } else if self.list.is_empty() {
+                self.selected = None;
+            }
+        }
+    }
+
     pub fn handle_async(&mut self, finish_list: &mut FinishList) {
+        if self.selected.is_none() && !self.list.is_empty() {
+            self.selected = Some(0);
+        }
+
         for index in 0..self.list.len() {
             let listener = &mut self.list[index];
             if listener.processed() {
                 continue;
             }
 
-            let (remove_hint, mark) = if let Some(task_result) = listener.try_receive() {
-                (
-                    matches!(
-                        task_result.final_stage,
-                        TaskFinalStage::UnknownUrl
-                            | TaskFinalStage::FailToConnection
-                            | TaskFinalStage::FailToCreateFile
-                            | TaskFinalStage::UnknownError
-                            | TaskFinalStage::Finished
-                    ),
-                    true,
-                )
-            } else {
-                (false, false)
-            };
+            let (remove_hint, mark_processed, mark_stopped) =
+                if let Some(task_result) = listener.try_receive() {
+                    (
+                        matches!(
+                            task_result.final_stage,
+                            TaskFinalStage::UnknownUrl
+                                | TaskFinalStage::FailToConnection
+                                | TaskFinalStage::FailToCreateFile
+                                | TaskFinalStage::FileCorrupted
+                                | TaskFinalStage::Abort
+                                | TaskFinalStage::Finished
+                                | TaskFinalStage::UnknownError
+                        ),
+                        true,
+                        !matches!(task_result.final_stage, TaskFinalStage::Finished),
+                    )
+                } else {
+                    (false, false, false)
+                };
 
-            if mark {
+            if mark_processed {
                 listener.mark_processed();
             }
+            if mark_stopped {
+                listener.mark_stopped();
+            }
             if remove_hint {
-                Self::push_to_finish_list(listener, finish_list);
-                self.list.remove(index);
+                self.move_to_finish_list(index, finish_list);
             }
         }
     }
@@ -247,5 +350,8 @@ pub enum DownloadListMessage {
     GoUp,
     GoDown,
     AppendTaskInput,
-    AppendTask(DownloadRequest),
+    AppendNewTask(String),
+    StopTask,
+    ContinueTask,
+    CancelTask,
 }
