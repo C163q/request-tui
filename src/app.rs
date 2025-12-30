@@ -13,8 +13,8 @@ use crate::window::app::{DownloadList, FinishList, PageList};
 use crate::window::common::Fill;
 use crate::window::{WidgetType, common};
 
-pub mod receive;
-pub mod send;
+pub mod listener;
+pub mod sender;
 pub mod task;
 
 /// 目前的设计如下：
@@ -38,6 +38,8 @@ pub struct App {
 }
 
 impl App {
+    // --------------- CONSTRUCT ---------------
+
     pub fn new(sender: mpsc::Sender<Task>) -> Self {
         App {
             list: PageList::new(),
@@ -46,6 +48,8 @@ impl App {
             running: true,
         }
     }
+
+    // ---------------- RUNNING ----------------
 
     pub fn run(mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
         while self.running {
@@ -57,6 +61,8 @@ impl App {
         }
         Ok(())
     }
+
+    // ------------------ MEMBER_ACCESS --------------------
 
     #[inline]
     pub fn append_widget(&mut self, widget: WidgetType) {
@@ -82,11 +88,6 @@ impl App {
     }
 
     #[inline]
-    pub(crate) fn destruct_data(&mut self) -> (&mut DownloadList, &mut Vec<WidgetType>, &mut FinishList) {
-        (&mut self.data.downloading, &mut self.widgets, &mut self.data.finished)
-    }
-
-    #[inline]
     pub fn finish_list(&self) -> &FinishList {
         self.data.finished()
     }
@@ -96,18 +97,18 @@ impl App {
         self.data.finished_mut()
     }
 
-    // 我们让页面至少以10FPS的频率进行刷新，而不会因为没有事件而阻塞
-    pub fn handle_event(&mut self) -> io::Result<()> {
-        let timeout = Duration::from_secs_f64(1.0 / 10.0);
-        if event::poll(timeout)? {
-            match event::read()? {
-                Event::Key(key) => self.distribute_key_event(key),
-                Event::Mouse(_) => {} // TODO: handle mouse events
-                _ => {}
-            }
-        }
-        Ok(())
+    #[inline]
+    pub(crate) fn destruct_data(
+        &mut self,
+    ) -> (&mut DownloadList, &mut Vec<WidgetType>, &mut FinishList) {
+        (
+            &mut self.data.downloading,
+            &mut self.widgets,
+            &mut self.data.finished,
+        )
     }
+
+    // -------------------- RENDER -----------------------
 
     /// 渲染整个程序的边框部分
     pub fn render_structure(&mut self, area: Rect, buf: &mut Buffer) -> (Rect, Rect) {
@@ -165,54 +166,19 @@ impl App {
         }
     }
 
-    // 我们将KeyEvent分发给最上层的Widget处理，如果没有Widget，则交给App处理
-    fn distribute_key_event(&mut self, key: KeyEvent) {
-        match self.widgets.pop() {
-            Some(widget) => {
-                widget.handle_key_event(key, self);
-            }
-            None => {
-                self.handle_key_event(key);
-            }
-        }
-    }
+    // --------------------- HANDLE_EVENT -----------------------
 
-    // App只处理推出的逻辑，其他的就交给各个子组件去处理
-    fn get_key_message(key: KeyEvent) -> Option<AppMessage> {
-        if key.kind == KeyEventKind::Press {
-            match (key.modifiers, key.code) {
-                (KeyModifiers::CONTROL, code) => match code {
-                    KeyCode::Char('c') | KeyCode::Char('C') => {
-                        return Some(AppMessage::Quit);
-                    }
-                    _ => {}
-                },
-                (_, code) => match code {
-                    KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
-                        return Some(AppMessage::Quit);
-                    }
-                    _ => {}
-                },
+    // 我们让页面至少以10FPS的频率进行刷新，而不会因为没有事件而阻塞
+    pub fn handle_event(&mut self) -> io::Result<()> {
+        let timeout = Duration::from_secs_f64(1.0 / 10.0);
+        if event::poll(timeout)? {
+            match event::read()? {
+                Event::Key(key) => self.distribute_key_event(key),
+                Event::Mouse(_) => {} // TODO: handle mouse events
+                _ => {}
             }
         }
-        Some(AppMessage::Distribute(key))
-    }
-
-    // 需要根据页面左侧选择的不同，将KeyEvent分发给不同的内容
-    fn distribute_to_content(&mut self, key: KeyEvent, selected: usize) {
-        match selected {
-            0 => {
-                self.data
-                    .downloading
-                    .handle_key_event(key, &mut self.widgets, &mut self.data.finished);
-            }
-            1 => {
-                self.data
-                    .finished_mut()
-                    .handle_key_event(key, &mut self.widgets);
-            }
-            _ => self.list.set_selected(None),
-        }
+        Ok(())
     }
 
     pub fn respond_to_message(&mut self, message: AppMessage) -> Option<AppMessage> {
@@ -241,6 +207,60 @@ impl App {
             opt_message = self.respond_to_message(message);
         }
     }
+
+    // App只处理推出的逻辑，其他的就交给各个子组件去处理
+    fn get_key_message(key: KeyEvent) -> Option<AppMessage> {
+        if key.kind == KeyEventKind::Press {
+            match (key.modifiers, key.code) {
+                (KeyModifiers::CONTROL, code) => match code {
+                    KeyCode::Char('c') | KeyCode::Char('C') => {
+                        return Some(AppMessage::Quit);
+                    }
+                    _ => {}
+                },
+                (_, code) => match code {
+                    KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
+                        return Some(AppMessage::Quit);
+                    }
+                    _ => {}
+                },
+            }
+        }
+        Some(AppMessage::Distribute(key))
+    }
+
+    // 需要根据页面左侧选择的不同，将KeyEvent分发给不同的内容
+    fn distribute_to_content(&mut self, key: KeyEvent, selected: usize) {
+        match selected {
+            0 => {
+                self.data.downloading.handle_key_event(
+                    key,
+                    &mut self.widgets,
+                    &mut self.data.finished,
+                );
+            }
+            1 => {
+                self.data
+                    .finished_mut()
+                    .handle_key_event(key, &mut self.widgets);
+            }
+            _ => self.list.set_selected(None),
+        }
+    }
+
+    // 我们将KeyEvent分发给最上层的Widget处理，如果没有Widget，则交给App处理
+    fn distribute_key_event(&mut self, key: KeyEvent) {
+        match self.widgets.pop() {
+            Some(widget) => {
+                widget.handle_key_event(key, self);
+            }
+            None => {
+                self.handle_key_event(key);
+            }
+        }
+    }
+
+    // ------------------- HANDLE_ASYNC ----------------------
 
     #[inline]
     pub fn handle_async(&mut self) {
@@ -285,12 +305,16 @@ pub struct AppData {
 }
 
 impl AppData {
+    // ------------------ CONSTRUCT --------------------
+
     pub fn new(sender: mpsc::Sender<Task>) -> Self {
         AppData {
             downloading: DownloadList::new(sender),
             finished: FinishList::new(),
         }
     }
+
+    // ----------------- MEMBER_ACCESS ------------------
 
     #[inline]
     pub fn downloading_mut(&mut self) -> &mut DownloadList {
@@ -311,6 +335,8 @@ impl AppData {
     pub fn finished(&self) -> &FinishList {
         &self.finished
     }
+
+    // ------------------- HANDLE_ASYNC ---------------------
 
     #[inline]
     pub fn handle_async(&mut self) {

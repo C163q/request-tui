@@ -87,5 +87,3 @@ pub fn render_border(
         .constraints([Constraint::Min(0)])
         .split(area)[0]
 }
-
-

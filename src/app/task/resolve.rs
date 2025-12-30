@@ -15,7 +15,7 @@ use tokio::{
 use url::Url;
 
 use crate::app::{
-    send::DownloadRequest,
+    sender::DownloadRequest,
     task::{SignalHandler, Task, TaskCommand, TaskInner, TaskResult},
 };
 
@@ -83,9 +83,7 @@ async fn handle_normal_download(task: TaskInner, url_str: String, handler: Signa
         }
     };
 
-    if let Some(handler) =
-        download_stream_to_file(&task, stream, &mut file, handler).await
-    {
+    if let Some(handler) = download_stream_to_file(&task, stream, &mut file, handler).await {
         handler.reporter.send(TaskResult::new_finished()).unwrap();
     }
 }
@@ -361,18 +359,20 @@ async fn handle_resume_download(task: TaskInner, handler: SignalHandler) {
         }
     };
 
-    let stream = match get_resume_download_stream(&task, url, &client, downloaded, accept_range).await {
-        Ok(s) => s,
-        Err(e) => {
-            handler.reporter.send(TaskResult::new_failed_to_resume_connection(e.to_string())).unwrap();
-            return;
-        }
-    };
+    let stream =
+        match get_resume_download_stream(&task, url, &client, downloaded, accept_range).await {
+            Ok(s) => s,
+            Err(e) => {
+                handler
+                    .reporter
+                    .send(TaskResult::new_failed_to_resume_connection(e.to_string()))
+                    .unwrap();
+                return;
+            }
+        };
     let stream = pin!(stream);
 
-    if let Some(handler) =
-        download_stream_to_file(&task, stream, &mut file, handler).await
-    {
+    if let Some(handler) = download_stream_to_file(&task, stream, &mut file, handler).await {
         handler.reporter.send(TaskResult::new_finished()).unwrap();
     }
 }
@@ -385,10 +385,14 @@ async fn get_resume_download_stream(
     accept_range: bool,
 ) -> anyhow::Result<impl Stream<Item = reqwest::Result<Bytes>>> {
     if accept_range {
-        let response = client.get(url).header(
-            header::RANGE,
-            header::HeaderValue::from_str(&format!("bytes={}-", downloaded))?,
-        ).send().await?;
+        let response = client
+            .get(url)
+            .header(
+                header::RANGE,
+                header::HeaderValue::from_str(&format!("bytes={}-", downloaded))?,
+            )
+            .send()
+            .await?;
 
         let head = response.headers();
         let content_length = head

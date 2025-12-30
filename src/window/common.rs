@@ -1,8 +1,7 @@
 mod render;
-mod widget;
 mod util;
+mod widget;
 
 pub use render::*;
-pub use widget::*;
 pub use util::*;
-
+pub use widget::*;

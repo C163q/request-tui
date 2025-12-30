@@ -5,8 +5,8 @@ use ratatui::widgets::Widget;
 use crate::app::App;
 use crate::window::download::DownloadInput;
 
-pub mod common;
 pub mod app;
+pub mod common;
 pub mod download;
 
 /// 代表所有可能的窗口类型
@@ -39,9 +39,7 @@ impl WidgetType {
 
     pub fn handle_key_event(self, key: KeyEvent, app: &mut App) {
         let vec: Vec<WidgetType> = match self {
-            WidgetType::DownloadInput(w) => {
-                w.handle_key_event(key, app)
-            }
+            WidgetType::DownloadInput(w) => w.handle_key_event(key, app),
         };
         app.append_widgets(vec);
     }

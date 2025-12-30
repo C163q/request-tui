@@ -22,6 +22,8 @@ impl Default for PageList {
 }
 
 impl PageList {
+    // ------------------- CONSTANT -----------------------
+
     // FIXME: 目前暂时使用Ratatui自带的List，为此，需要使用换行符来保证一个项能够多行显示
     pub const PAGE_STR: [&'static str; PageList::PAGE_COUNT] =
         ["\nDownloading\n\n", "\nFinished\n\n"];
@@ -29,6 +31,8 @@ impl PageList {
     pub const PAGE_COUNT: usize = 2;
 
     const SELECTED_STYLE: Style = Style::new().bg(Color::LightBlue).fg(Color::Black);
+
+    // ----------------------- CONSTRUCT ------------------------
 
     pub fn new() -> Self {
         let mut selected = ListState::default();
@@ -43,13 +47,31 @@ impl PageList {
         }
     }
 
+    // -------------------- MEMBER_ACCESS ---------------------
+
     pub fn selected(&self) -> Option<usize> {
         self.selected.selected()
     }
 
+    pub fn entered(&self) -> bool {
+        self.enter
+    }
+
+    // -------------------- MODIFIER -----------------------
+
     pub fn set_selected(&mut self, index: Option<usize>) {
         self.selected.select(index);
     }
+
+    pub fn enter(&mut self) {
+        self.enter = true;
+    }
+
+    pub fn exit(&mut self) {
+        self.enter = false;
+    }
+
+    // -------------------- FUNCTION -----------------------
 
     pub fn select_next(&mut self) {
         match self.selected() {
@@ -77,17 +99,7 @@ impl PageList {
         }
     }
 
-    pub fn entered(&self) -> bool {
-        self.enter
-    }
-
-    pub fn enter(&mut self) {
-        self.enter = true;
-    }
-
-    pub fn exit(&mut self) {
-        self.enter = false;
-    }
+    // -------------------- HANDLE_MESSAGE -----------------------
 
     pub fn respond_to_message(&mut self, message: PageListMessage) -> Option<PageListMessage> {
         match message {
@@ -160,4 +172,3 @@ pub enum PageListMessage {
     GoUp,
     GoDown,
 }
-

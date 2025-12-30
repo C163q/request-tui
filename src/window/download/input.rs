@@ -26,7 +26,11 @@ impl Default for DownloadInput {
 }
 
 impl DownloadInput {
+    // ------------------- CONSTANT -----------------------
+
     const INPUT_BOARDER_HIGHLIGHT_STYLE: Style = Style::new().fg(Color::LightYellow);
+
+    // -------------------- CONSTRUCT ---------------------
 
     pub fn new() -> Self {
         DownloadInput {
@@ -34,6 +38,8 @@ impl DownloadInput {
             mode: InputMode::Normal,
         }
     }
+
+    // ------------------ MEMBER_ACCESS --------------------
 
     pub fn input(&self) -> &TextArea<'_> {
         &self.input
@@ -47,17 +53,18 @@ impl DownloadInput {
         &self.mode
     }
 
+    // -------------------- MODIFIER -----------------------
+
     pub fn set_mode(&mut self, mode: InputMode) {
         self.mode = mode;
     }
 
+    // -------------------- HANDLE_MESSAGE --------------------
+
     fn comfirm_inner(self: Box<Self>, app: &mut App) {
         let lines = self.input.into_lines();
         for line in lines {
-            DownloadList::respond_to_message(
-                app,
-                DownloadListMessage::AppendNewTask(line),
-            );
+            DownloadList::respond_to_message(app, DownloadListMessage::AppendNewTask(line));
         }
     }
 
@@ -137,9 +144,7 @@ impl WidgetExt for DownloadInput {
                 self.input.input(key);
                 MessageTransfer::keep(self)
             }
-            DownloadInputMessage::Quit => {
-                MessageTransfer::new()
-            }
+            DownloadInputMessage::Quit => MessageTransfer::new(),
         }
     }
 }

@@ -1,13 +1,12 @@
 use std::{io::Stdout, thread};
 
-use ratatui::{prelude::CrosstermBackend, Terminal};
+use ratatui::{Terminal, prelude::CrosstermBackend};
 use tokio::{runtime, sync::mpsc};
 
-use crate::app::{task::TaskManager, App};
+use crate::app::{App, task::TaskManager};
 
 pub mod app;
 pub mod window;
-pub mod request;
 
 pub fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Result<()> {
     let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
@@ -21,5 +20,3 @@ pub fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> anyhow::Res
     background.join().unwrap();
     Ok(())
 }
-
-

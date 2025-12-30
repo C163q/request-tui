@@ -5,8 +5,8 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use tokio::sync::mpsc;
 
 use crate::app::App;
-use crate::app::receive::TaskListener;
-use crate::app::send;
+use crate::app::listener::TaskListener;
+use crate::app::sender;
 use crate::app::task::{Task, TaskCommand, TaskFinalStage};
 use crate::window::WidgetType;
 use crate::window::app::FinishList;
@@ -23,29 +23,39 @@ use crate::window::common::{self, Fill};
 pub struct DownloadList {
     list: Vec<TaskListener>,
     selected: Option<usize>,
-    sender: send::Sender,
+    sender: sender::Sender,
 }
 
 impl DownloadList {
+    // -------------------- CONSTANT -----------------------
+
     pub const NOT_ENOUGH_SPACE_BG: Style = Style::new().bg(Color::DarkGray);
+
+    // -------------------- CONSTRUCT -----------------------
 
     pub fn new(sender: mpsc::Sender<Task>) -> Self {
         DownloadList {
             list: Vec::new(),
             selected: None,
-            sender: send::Sender::new(sender),
+            sender: sender::Sender::new(sender),
         }
     }
+
+    // -------------------- MEMBER_ACCESS -----------------------
 
     #[inline]
     pub fn selected(&self) -> Option<usize> {
         self.selected
     }
 
+    // -------------------- MODIFIER -----------------------
+
     #[inline]
     pub fn set_selected(&mut self, index: Option<usize>) {
         self.selected = index;
     }
+
+    // -------------------- FUNCTION -----------------------
 
     pub fn select_next(&mut self) {
         if self.list.is_empty() {
@@ -134,6 +144,24 @@ impl DownloadList {
         }
         Ok(())
     }
+
+    fn push_to_finish_list(listener: &mut TaskListener, finish_list: &mut FinishList) {
+        finish_list.push_task(listener.into_finished_task());
+    }
+
+    fn move_to_finish_list(&mut self, index: usize, finish_list: &mut FinishList) {
+        Self::push_to_finish_list(&mut self.list[index], finish_list);
+        self.list.remove(index);
+        if let Some(selected) = self.selected {
+            if selected >= index && selected > 0 {
+                self.selected = Some(selected - 1);
+            } else if self.list.is_empty() {
+                self.selected = None;
+            }
+        }
+    }
+
+    // ------------------- HANDLE_MESSAGE ----------------------
 
     #[inline]
     pub fn respond_to_message(
@@ -225,21 +253,7 @@ impl DownloadList {
         }
     }
 
-    fn push_to_finish_list(listener: &mut TaskListener, finish_list: &mut FinishList) {
-        finish_list.push_task(listener.into_finished_task());
-    }
-
-    fn move_to_finish_list(&mut self, index: usize, finish_list: &mut FinishList) {
-        Self::push_to_finish_list(&mut self.list[index], finish_list);
-        self.list.remove(index);
-        if let Some(selected) = self.selected {
-            if selected >= index && selected > 0 {
-                self.selected = Some(selected - 1);
-            } else if self.list.is_empty() {
-                self.selected = None;
-            }
-        }
-    }
+    // ------------------- HANDLE_ASYNC ----------------------
 
     pub fn handle_async(&mut self, finish_list: &mut FinishList) {
         if self.selected.is_none() && !self.list.is_empty() {

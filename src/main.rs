@@ -2,7 +2,6 @@ use std::env;
 
 use tui_logger::{LevelFilter, TuiLoggerFile, TuiLoggerLevelOutput};
 
-
 fn main() -> anyhow::Result<()> {
     // initialize logging
     tui_logger::init_logger(LevelFilter::Trace)?;
@@ -23,4 +22,3 @@ fn main() -> anyhow::Result<()> {
     ratatui::restore();
     Ok(())
 }
-

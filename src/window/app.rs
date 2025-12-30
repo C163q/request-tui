@@ -1,7 +1,7 @@
 mod download;
-mod page;
 mod finish;
+mod page;
 
 pub use download::*;
-pub use page::*;
 pub use finish::*;
+pub use page::*;

@@ -7,8 +7,8 @@ use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Widget};
 use url::Url;
 
 use crate::app::App;
-use crate::window::common::{self, Fill};
 use crate::window::WidgetType;
+use crate::window::common::{self, Fill};
 
 #[derive(Debug, Clone, Copy)]
 pub enum FinishState {
@@ -25,6 +25,8 @@ pub struct FinishedTask {
 }
 
 impl FinishedTask {
+    // ------------------- CONSTANT -----------------------
+
     const BAR_STYLE_WITH_TOTAL: Style =
         Style::new().fg(tailwind::BLUE.c400).bg(tailwind::GRAY.c500);
     const BAR_STYLE_NO_TOTAL: Style = Style::new()
@@ -33,6 +35,8 @@ impl FinishedTask {
     const BAR_TEXT_STYLE: Style = Style::new().fg(Color::White);
 
     const HIGHTLIGHT_COLOR: Color = Color::LightBlue;
+
+    // -------------------- CONSTRUCT ----------------------
 
     pub fn new(
         state: FinishState,
@@ -86,7 +90,8 @@ impl StatefulWidget for &mut FinishedTask {
             Constraint::Length(1),
             Constraint::Min(1),
             Constraint::Length(1),
-        ]).split(bar)[1];
+        ])
+        .split(bar)[1];
 
         // 文件名
         Paragraph::new(self.filepath.to_string_lossy())
@@ -166,7 +171,11 @@ impl Default for FinishList {
 }
 
 impl FinishList {
+    // ------------------- CONSTANT -----------------------
+
     pub const NOT_ENOUGH_SPACE_BG: Style = Style::new().bg(Color::DarkGray);
+
+    // -------------------- CONSTRUCT ----------------------
 
     pub fn new() -> Self {
         FinishList {
@@ -175,13 +184,19 @@ impl FinishList {
         }
     }
 
+    // ------------------ MEMBER_ACCESS --------------------
+
     pub fn selected(&self) -> Option<usize> {
         self.selected
     }
 
+    // -------------------- MODIFIER -----------------------
+
     pub fn set_selected(&mut self, index: Option<usize>) {
         self.selected = index;
     }
+
+    // --------------------- FUNCTION ----------------------
 
     pub fn select_next(&mut self) {
         if self.list.is_empty() {
@@ -225,6 +240,8 @@ impl FinishList {
         self.list.push(task);
     }
 
+    // ------------------- HANDLE_MESSAGE ----------------------
+
     pub fn respond_to_message(
         app: &mut App,
         message: FinishListMessage,
@@ -264,6 +281,8 @@ impl FinishList {
             opt_message = self.respond_to_message_inner(message, widgets);
         }
     }
+
+    // ------------------- HANDLE_ASYNC ----------------------
 
     pub fn handle_async(&mut self) {
         if self.selected.is_none() && !self.list.is_empty() {

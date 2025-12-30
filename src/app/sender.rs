@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::app::{
-    receive::{ListenerChannel, TaskListener},
+    listener::{ListenerChannel, TaskListener},
     task::{Task, TaskState},
 };
 
@@ -13,9 +13,13 @@ pub struct Sender {
 }
 
 impl Sender {
+    // -------------------- CONSTRUCT -----------------------
+
     pub fn new(sender: mpsc::Sender<Task>) -> Self {
         Sender { sender }
     }
+
+    // -------------------- FUNCTION -----------------------
 
     pub fn send_normal_request(
         &self,
@@ -38,10 +42,7 @@ impl Sender {
     pub fn send_resume_request(
         &self,
         task_state: Arc<Mutex<TaskState>>,
-    ) -> Result<
-        ListenerChannel,
-        Box<mpsc::error::SendError<Task>>,
-    > {
+    ) -> Result<ListenerChannel, Box<mpsc::error::SendError<Task>>> {
         let (res_tx, res_rx) = oneshot::channel();
         let (cmd_tx, cmd_rx) = oneshot::channel();
         let task = Task::new(task_state, DownloadRequest::Resume, res_tx, cmd_rx);

@@ -4,31 +4,12 @@ use ratatui::widgets::StatefulWidget;
 use ratatui::{prelude::*, widgets::Paragraph};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::app::send::Sender;
+use crate::app::sender::Sender;
 use crate::app::task::TaskCommand;
 use crate::{
     app::task::{TaskFinalStage, TaskResult, TaskState},
     window::app::{FinishState, FinishedTask},
 };
-
-pub struct ListenerChannel {
-    pub result_recv: oneshot::Receiver<TaskResult>,
-
-    // 用于给Task发送指令
-    pub command_sender: Option<oneshot::Sender<TaskCommand>>,
-}
-
-impl ListenerChannel {
-    pub fn new(
-        result_recv: oneshot::Receiver<TaskResult>,
-        command_sender: oneshot::Sender<TaskCommand>,
-    ) -> Self {
-        ListenerChannel {
-            result_recv,
-            command_sender: Some(command_sender),
-        }
-    }
-}
 
 pub struct TaskListener {
     state: Arc<Mutex<TaskState>>,
@@ -43,6 +24,8 @@ pub struct TaskListener {
 }
 
 impl TaskListener {
+    // -------------------- CONSTRUCT -----------------------
+
     pub fn new(
         state: Arc<Mutex<TaskState>>,
         result_recv: oneshot::Receiver<TaskResult>,
@@ -56,6 +39,8 @@ impl TaskListener {
             stopped: false,
         }
     }
+
+    // -------------------- TYPE_CONVERSION -----------------------
 
     pub fn into_finished_task(&mut self) -> FinishedTask {
         self.processed = true;
@@ -90,6 +75,8 @@ impl TaskListener {
         )
     }
 
+    // -------------------- FUNCTION -----------------------
+
     pub fn resume_task(
         &mut self,
         sender: &mut Sender,
@@ -98,7 +85,10 @@ impl TaskListener {
             return Ok(());
         }
 
-        let ListenerChannel { result_recv, command_sender } = sender
+        let ListenerChannel {
+            result_recv,
+            command_sender,
+        } = sender
             .send_resume_request(self.state.clone())
             .map_err(|t| Box::new(mpsc::error::SendError(t.0.release_state())))?;
 
@@ -131,6 +121,18 @@ impl TaskListener {
         self.task_result.as_ref()
     }
 
+    pub fn send_command(&mut self, command: TaskCommand) {
+        let sender = self.command_sender_channel().take();
+        if let Some(sender) = sender
+            && !self.stopped
+        {
+            log::debug!("Sending command to task: {:?}", command);
+            let _ = sender.send(command);
+        }
+    }
+
+    // -------------------- MEMBER_ACCESS -----------------------
+
     pub fn result_recv_channel(&mut self) -> &mut oneshot::Receiver<TaskResult> {
         &mut self.channel.result_recv
     }
@@ -151,26 +153,18 @@ impl TaskListener {
         self.processed
     }
 
+    pub fn is_stopped(&mut self) -> bool {
+        self.stopped
+    }
+
+    // -------------------- MODIFIER -----------------------
+
     pub fn mark_processed(&mut self) {
         self.processed = true;
     }
 
     pub fn mark_stopped(&mut self) {
         self.stopped = true;
-    }
-
-    pub fn is_stopped(&mut self) -> bool {
-        self.stopped
-    }
-
-    pub fn send_command(&mut self, command: TaskCommand) {
-        let sender = self.command_sender_channel().take();
-        if let Some(sender) = sender
-            && !self.stopped
-        {
-            log::debug!("Sending command to task: {:?}", command);
-            let _ = sender.send(command);
-        }
     }
 }
 
@@ -199,5 +193,24 @@ impl StatefulWidget for &mut TaskListener {
             None => String::from("Downloading..."),
         };
         Paragraph::new(text).left_aligned().render(text_area, buf);
+    }
+}
+
+pub struct ListenerChannel {
+    pub result_recv: oneshot::Receiver<TaskResult>,
+
+    // 用于给Task发送指令
+    pub command_sender: Option<oneshot::Sender<TaskCommand>>,
+}
+
+impl ListenerChannel {
+    pub fn new(
+        result_recv: oneshot::Receiver<TaskResult>,
+        command_sender: oneshot::Sender<TaskCommand>,
+    ) -> Self {
+        ListenerChannel {
+            result_recv,
+            command_sender: Some(command_sender),
+        }
     }
 }
