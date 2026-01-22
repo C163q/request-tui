@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::style::palette::tailwind;
-use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Widget};
+use ratatui::widgets::{Gauge, Paragraph, Widget};
 use url::Url;
 
 use crate::app::App;
 use crate::window::WidgetType;
-use crate::window::common::{self, Fill};
+use crate::window::common::{self, Fill, VerticalList, VerticalListItem};
 
 #[derive(Debug, Clone, Copy)]
 pub enum FinishState {
@@ -36,6 +36,8 @@ impl FinishedTask {
 
     const HIGHTLIGHT_COLOR: Color = Color::LightBlue;
 
+    pub const RENDER_HEIGHT: u16 = 3;
+
     // -------------------- CONSTRUCT ----------------------
 
     pub fn new(
@@ -61,7 +63,7 @@ impl FinishedTask {
 ///       <downloaded> / <size>
 ///
 /// [`TaskState`]: crate::app::task::TaskState
-impl StatefulWidget for &mut FinishedTask {
+impl StatefulWidget for &FinishedTask {
     type State = bool;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let text_style = if *state {
@@ -162,6 +164,7 @@ impl StatefulWidget for &mut FinishedTask {
 pub struct FinishList {
     list: Vec<FinishedTask>,
     selected: Option<usize>,
+    scroll: usize,
 }
 
 impl Default for FinishList {
@@ -174,6 +177,7 @@ impl FinishList {
     // ------------------- CONSTANT -----------------------
 
     pub const NOT_ENOUGH_SPACE_BG: Style = Style::new().bg(Color::DarkGray);
+    pub const RENDER_ITEM_HEIGHT: u16 = FinishedTask::RENDER_HEIGHT;
 
     // -------------------- CONSTRUCT ----------------------
 
@@ -181,6 +185,7 @@ impl FinishList {
         FinishList {
             list: Vec::new(),
             selected: None,
+            scroll: 0,
         }
     }
 
@@ -190,10 +195,18 @@ impl FinishList {
         self.selected
     }
 
+    pub fn scroll(&self) -> usize {
+        self.scroll
+    }
+
     // -------------------- MODIFIER -----------------------
 
     pub fn set_selected(&mut self, index: Option<usize>) {
         self.selected = index;
+    }
+
+    pub fn scroll_to(&mut self, scroll: usize) {
+        self.scroll = scroll;
     }
 
     // --------------------- FUNCTION ----------------------
@@ -238,6 +251,15 @@ impl FinishList {
 
     pub fn push_task(&mut self, task: FinishedTask) {
         self.list.push(task);
+    }
+
+    fn fit_to_screen(&mut self, area_height: u16) {
+        let total_height =
+            (self.list.len() * (Self::RENDER_ITEM_HEIGHT as usize + 1)).saturating_sub(1);
+        self.scroll_to(
+            self.scroll()
+                .min(total_height.saturating_sub(area_height as usize)),
+        );
     }
 
     // ------------------- HANDLE_MESSAGE ----------------------
@@ -294,7 +316,6 @@ impl FinishList {
 impl StatefulWidget for &mut FinishList {
     type State = bool; // focused
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let mut list_remain_area = area;
         let empty_text_style = if *state {
             Style::default().bg(Color::Gray).fg(Color::Black)
         } else {
@@ -312,39 +333,34 @@ impl StatefulWidget for &mut FinishList {
             return;
         }
 
-        for (i, state) in self.list.iter_mut().enumerate() {
-            if i != 0 {
-                // 必须保证分隔符有空间渲染
-                if list_remain_area.height == 0 {
-                    break;
+        self.fit_to_screen(area.height);
+        match self.selected() {
+            None => {}
+            Some(idx) => {
+                let focused_distance = idx * (FinishList::RENDER_ITEM_HEIGHT + 1) as usize;
+                if focused_distance < self.scroll() {
+                    self.scroll_to(focused_distance);
                 }
-
-                let [bar, area] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
-                    .areas(list_remain_area);
-                list_remain_area = area;
-
-                Block::new().borders(Borders::BOTTOM).render(bar, buf);
+                if focused_distance + FinishList::RENDER_ITEM_HEIGHT as usize
+                    > self.scroll() + area.height as usize
+                {
+                    self.scroll_to(
+                        focused_distance + FinishList::RENDER_ITEM_HEIGHT as usize
+                            - area.height as usize,
+                    );
+                }
             }
-
-            // 我们至少需要3行空间来渲染一个完成任务的状态
-            if list_remain_area.height < 3 {
-                Fill::new(FinishList::NOT_ENOUGH_SPACE_BG).render(list_remain_area, buf);
-                break;
-            }
-
-            let [state_area, area] = Layout::vertical([Constraint::Length(3), Constraint::Min(0)])
-                .areas(list_remain_area);
-            let mut is_selected = if let Some(selected) = self.selected
-                && selected == i
-            {
-                true
-            } else {
-                false
-            };
-            state.render(state_area, buf, &mut is_selected);
-
-            list_remain_area = area;
         }
+
+        let items: Vec<_> = self
+            .list
+            .iter()
+            .map(|item| VerticalListItem::new(FinishList::RENDER_ITEM_HEIGHT, item))
+            .collect();
+        VerticalList::new(items)
+            .with_selected(self.selected())
+            .with_scroll(self.scroll())
+            .render(area, buf);
     }
 }
 

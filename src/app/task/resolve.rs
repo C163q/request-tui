@@ -168,6 +168,10 @@ async fn get_download_head(
                 .and_then(|mut segments| segments.next_back())
                 .and_then(|name| if name.is_empty() { None } else { Some(name) }))
             .unwrap_or("tmp.bin");
+
+        // FIXME:
+        // 由于当前会首先搜索目录下是否有同名文件，然后创建文件，存在这样一种情况，
+        // 同时下载两个同名文件时，两者同时检测到没有同名文件，然后创建了同名文件，导致冲突。
         download_dir.join(get_filename_no_duplicate(download_dir, fname))
     };
 

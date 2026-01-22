@@ -24,3 +24,7 @@ cargo install --path .
 - [ ] 使用`?`打开帮助对话框
 - [ ] 鼠标支持
 
+## 已知问题
+
+当同时下载同名文件时，由于多线程竞争问题，导致创建同名文件的问题。（见[resolve.rs#L172](./src/app/task/resolve.rs)）
+

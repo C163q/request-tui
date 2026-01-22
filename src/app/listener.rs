@@ -24,6 +24,8 @@ pub struct TaskListener {
 }
 
 impl TaskListener {
+    pub const RENDER_HEIGHT: u16 = TaskState::RENDER_HEIGHT;
+
     // -------------------- CONSTRUCT -----------------------
 
     pub fn new(
@@ -168,11 +170,15 @@ impl TaskListener {
     }
 }
 
-impl StatefulWidget for &mut TaskListener {
+impl StatefulWidget for &TaskListener {
     type State = bool; // focused
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         // 渲染只占用3行
-        let area = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(area)[0];
+        let area = Layout::vertical([
+            Constraint::Length(TaskListener::RENDER_HEIGHT),
+            Constraint::Min(0),
+        ])
+        .split(area)[0];
 
         let mut cloned_state = {
             let mut state_lock = self.state.lock().unwrap();

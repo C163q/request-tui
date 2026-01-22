@@ -64,6 +64,10 @@ impl DownloadInput {
     fn comfirm_inner(self: Box<Self>, app: &mut App) {
         let lines = self.input.into_lines();
         for line in lines {
+            let line = line.trim().to_string();
+            if line.is_empty() {
+                continue;
+            }
             DownloadList::respond_to_message(app, DownloadListMessage::AppendNewTask(line));
         }
     }

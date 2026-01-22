@@ -48,6 +48,8 @@ impl TaskState {
 
     const HIGHTLIGHT_COLOR: Color = Color::LightBlue;
 
+    pub const RENDER_HEIGHT: u16 = 3;
+
     // ----------------------- CONSTRUCT ------------------------
 
     pub fn new() -> Self {
@@ -152,7 +154,11 @@ impl StatefulWidget for &mut TaskState {
 
         // 我们将区域垂直分为三部分：文件名、进度条、其他信息，每个信息占据一行。
         // 理论上在调用render时，area的高度正好为3，但为了保险起见，我们在此给出限制。
-        let [area, _] = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).areas(area);
+        let [area, _] = Layout::vertical([
+            Constraint::Length(TaskState::RENDER_HEIGHT),
+            Constraint::Min(0),
+        ])
+        .areas(area);
 
         if *state {
             Fill::new(Style::new().bg(TaskState::HIGHTLIGHT_COLOR)).render(area, buf);
