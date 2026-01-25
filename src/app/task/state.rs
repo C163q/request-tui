@@ -46,7 +46,8 @@ impl TaskState {
     // 我们希望每隔500毫秒刷新一次下载速度显示
     const REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 
-    const HIGHTLIGHT_COLOR: Color = Color::LightBlue;
+    const FOCUSED_HIGHTLIGHT_COLOR: Color = Color::LightBlue;
+    const UNFOCUSED_HIGHTLIGHT_COLOR: Color = tailwind::GRAY.c500;
 
     pub const RENDER_HEIGHT: u16 = 3;
 
@@ -127,6 +128,21 @@ impl TaskState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TaskStateRenderState {
+    pub page_focused: bool,
+    pub selected: bool,
+}
+
+impl TaskStateRenderState {
+    pub fn new(page_focused: bool, selected: bool) -> Self {
+        TaskStateRenderState {
+            page_focused,
+            selected,
+        }
+    }
+}
+
 /// 给TaskState实现[`StatefulWidget`] trait，以便在UI线程中渲染任务状态。
 /// 具体的渲染的样子可以见[`DownloadList`]的文档。
 ///
@@ -139,15 +155,19 @@ impl TaskState {
 ///
 /// [`DownloadList`]: crate::window::app::DownloadList
 impl StatefulWidget for &mut TaskState {
-    type State = bool; // 是否选中
+    type State = TaskStateRenderState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State)
     where
         Self: Sized,
     {
-        let text_style = if *state {
-            Style::new()
-                .bg(TaskState::HIGHTLIGHT_COLOR)
-                .fg(Color::Black)
+        let highlight_color = if state.page_focused {
+            TaskState::FOCUSED_HIGHTLIGHT_COLOR
+        } else {
+            TaskState::UNFOCUSED_HIGHTLIGHT_COLOR
+        };
+
+        let text_style = if state.selected {
+            Style::new().bg(highlight_color).fg(Color::Black)
         } else {
             Style::new().fg(Color::White)
         };
@@ -160,8 +180,8 @@ impl StatefulWidget for &mut TaskState {
         ])
         .areas(area);
 
-        if *state {
-            Fill::new(Style::new().bg(TaskState::HIGHTLIGHT_COLOR)).render(area, buf);
+        if state.selected {
+            Fill::new(Style::new().bg(highlight_color)).render(area, buf);
         }
 
         let [text, bar, footer] = Layout::vertical([

@@ -35,7 +35,7 @@ impl DownloadInput {
     pub fn new() -> Self {
         DownloadInput {
             input: TextArea::default(),
-            mode: InputMode::Normal,
+            mode: InputMode::Editing,
         }
     }
 

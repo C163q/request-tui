@@ -34,7 +34,8 @@ impl FinishedTask {
         .bg(tailwind::GRAY.c500);
     const BAR_TEXT_STYLE: Style = Style::new().fg(Color::White);
 
-    const HIGHTLIGHT_COLOR: Color = Color::LightBlue;
+    const FOCUSED_HIGHTLIGHT_COLOR: Color = Color::LightBlue;
+    const UNFOCUSED_HIGHTLIGHT_COLOR: Color = tailwind::GRAY.c500;
 
     pub const RENDER_HEIGHT: u16 = 3;
 
@@ -57,6 +58,21 @@ impl FinishedTask {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FinishedTaskRenderState {
+    pub page_focused: bool,
+    pub selected: bool,
+}
+
+impl FinishedTaskRenderState {
+    pub fn new(page_focused: bool, selected: bool) -> Self {
+        FinishedTaskRenderState {
+            page_focused,
+            selected,
+        }
+    }
+}
+
 /// 对于完成的任务，渲染的内容也大致与正在进行的任务类似，见[`TaskState`]：
 /// <filename>
 /// <process bar> <percentage>%
@@ -64,12 +80,16 @@ impl FinishedTask {
 ///
 /// [`TaskState`]: crate::app::task::TaskState
 impl StatefulWidget for &FinishedTask {
-    type State = bool;
+    type State = FinishedTaskRenderState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let text_style = if *state {
-            Style::new()
-                .bg(FinishedTask::HIGHTLIGHT_COLOR)
-                .fg(Color::Black)
+        let highlight_color = if state.page_focused {
+            FinishedTask::FOCUSED_HIGHTLIGHT_COLOR
+        } else {
+            FinishedTask::UNFOCUSED_HIGHTLIGHT_COLOR
+        };
+
+        let text_style = if state.selected {
+            Style::new().bg(highlight_color).fg(Color::Black)
         } else {
             Style::new().fg(Color::White)
         };
@@ -78,8 +98,8 @@ impl StatefulWidget for &FinishedTask {
         // 理论上在调用render时，area的高度正好为3，但为了保险起见，我们在此给出限制。
         let [area, _] = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).areas(area);
 
-        if *state {
-            Fill::new(Style::new().bg(FinishedTask::HIGHTLIGHT_COLOR)).render(area, buf);
+        if state.selected {
+            Fill::new(Style::new().bg(highlight_color)).render(area, buf);
         }
 
         let [text, bar, footer] = Layout::vertical([
@@ -357,7 +377,8 @@ impl StatefulWidget for &mut FinishList {
             .iter()
             .map(|item| VerticalListItem::new(FinishList::RENDER_ITEM_HEIGHT, item))
             .collect();
-        VerticalList::new(items)
+        VerticalList::new(items, FinishedTaskRenderState::new(*state, false))
+            .with_selected_state(FinishedTaskRenderState::new(*state, true))
             .with_selected(self.selected())
             .with_scroll(self.scroll())
             .render(area, buf);

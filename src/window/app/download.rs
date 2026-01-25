@@ -5,7 +5,7 @@ use ratatui::widgets::Widget;
 use tokio::sync::mpsc;
 
 use crate::app::App;
-use crate::app::listener::TaskListener;
+use crate::app::listener::{TaskListener, TaskListenerRanderState};
 use crate::app::sender;
 use crate::app::task::{Task, TaskCommand, TaskFinalStage};
 use crate::window::WidgetType;
@@ -98,8 +98,9 @@ impl DownloadListInner {
     }
 }
 
-impl Widget for &mut DownloadListInner {
-    fn render(self, area: Rect, buf: &mut Buffer) {
+impl StatefulWidget for &mut DownloadListInner {
+    type State = bool; // focused
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         self.fit_to_screen(area.height);
         match self.selected() {
             None => {}
@@ -124,7 +125,8 @@ impl Widget for &mut DownloadListInner {
             .iter()
             .map(|item| VerticalListItem::new(DownloadListInner::RENDER_ITEM_HEIGHT, item))
             .collect();
-        VerticalList::new(items)
+        VerticalList::new(items, TaskListenerRanderState::new(*state, false))
+            .with_selected_state(TaskListenerRanderState::new(*state, true))
             .with_selected(self.selected())
             .with_scroll(self.scroll())
             .render(area, buf);
@@ -462,7 +464,7 @@ impl StatefulWidget for &mut DownloadList {
             return;
         }
 
-        self.inner.render(area, buf);
+        self.inner.render(area, buf, state);
     }
 }
 

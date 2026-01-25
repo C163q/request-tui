@@ -29,13 +29,21 @@ impl Widget for Fill {
     }
 }
 
-pub struct VerticalListItem<W: StatefulWidget<State = bool> + Clone> {
+pub struct VerticalListItem<S, W>
+where
+    S: Clone,
+    W: StatefulWidget<State = S> + Clone,
+{
     // vertical_size should not be 0
     vertical_size: NonZeroU16,
     widget: W,
 }
 
-impl<W: StatefulWidget<State = bool> + Clone> VerticalListItem<W> {
+impl<S, W> VerticalListItem<S, W>
+where
+    S: Clone,
+    W: StatefulWidget<State = S> + Clone,
+{
     // ----------------- CONSTRUCT ------------------
 
     pub fn new(vertical_size: u16, widget: W) -> Self {
@@ -63,8 +71,12 @@ impl<W: StatefulWidget<State = bool> + Clone> VerticalListItem<W> {
     }
 }
 
-impl<W: StatefulWidget<State = bool> + Clone> StatefulWidget for &VerticalListItem<W> {
-    type State = bool;
+impl<S, W> StatefulWidget for &VerticalListItem<S, W>
+where
+    S: Clone,
+    W: StatefulWidget<State = S> + Clone,
+{
+    type State = S;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let area = Rect {
@@ -75,24 +87,37 @@ impl<W: StatefulWidget<State = bool> + Clone> StatefulWidget for &VerticalListIt
     }
 }
 
-pub struct VerticalList<W: StatefulWidget<State = bool> + Clone> {
-    list: Vec<VerticalListItem<W>>,
+pub struct VerticalList<S, W>
+where
+    S: Clone,
+    W: StatefulWidget<State = S> + Clone,
+{
+    list: Vec<VerticalListItem<S, W>>,
     selected: Option<usize>,
 
     /// 距离顶部的滚动距离
     scroll: usize,
+
+    unselected_state: S,
+    selected_state: Option<S>,
 }
 
-impl<W: StatefulWidget<State = bool> + Clone> VerticalList<W> {
+impl<S, W> VerticalList<S, W>
+where
+    S: Clone,
+    W: StatefulWidget<State = S> + Clone,
+{
     pub const NOT_ENOUGH_SPACE_BG: Style = Style::new().bg(Color::DarkGray);
 
     // ----------------- CONSTRUCT ------------------
 
-    pub fn new(list: Vec<VerticalListItem<W>>) -> Self {
+    pub fn new(list: Vec<VerticalListItem<S, W>>, unselected: S) -> Self {
         VerticalList {
             scroll: 0,
             list,
             selected: None,
+            unselected_state: unselected,
+            selected_state: None,
         }
     }
 
@@ -108,9 +133,15 @@ impl<W: StatefulWidget<State = bool> + Clone> VerticalList<W> {
         self
     }
 
+    #[inline]
+    pub fn with_selected_state(mut self, selected_state: S) -> Self {
+        self.selected_state = Some(selected_state);
+        self
+    }
+
     // ----------------- MEMBER_ACCESS -----------------
 
-    pub fn list(&self) -> &Vec<VerticalListItem<W>> {
+    pub fn list(&self) -> &Vec<VerticalListItem<S, W>> {
         &self.list
     }
 
@@ -137,7 +168,11 @@ impl<W: StatefulWidget<State = bool> + Clone> VerticalList<W> {
     }
 }
 
-impl<W: StatefulWidget<State = bool> + Clone> Widget for &VerticalList<W> {
+impl<S, W> Widget for &VerticalList<S, W>
+where
+    S: Clone,
+    W: StatefulWidget<State = S> + Clone,
+{
     fn render(self, area: Rect, buf: &mut Buffer) {
         let mut distance: usize = 0;
         const DIVIDER_HEIGHT: usize = 1;
@@ -225,7 +260,7 @@ impl<W: StatefulWidget<State = bool> + Clone> Widget for &VerticalList<W> {
                 Constraint::Min(0),
             ])
             .areas(area);
-            Fill::new(VerticalList::<W>::NOT_ENOUGH_SPACE_BG).render(fill, buf);
+            Fill::new(VerticalList::<S, W>::NOT_ENOUGH_SPACE_BG).render(fill, buf);
             // render divider
             render_divider(divider_area, buf);
             remain
@@ -236,6 +271,15 @@ impl<W: StatefulWidget<State = bool> + Clone> Widget for &VerticalList<W> {
         left_item
             .into_iter()
             .take_while(|&(idx, item)| {
+                let mut state = if self.selected() == Some(idx) {
+                    self.selected_state
+                        .as_ref()
+                        .unwrap_or(&self.unselected_state)
+                        .clone()
+                } else {
+                    self.unselected_state.clone()
+                };
+
                 area = if item.vertical_size() + DIVIDER_HEIGHT as u16 <= area.height {
                     // fits divider and item
                     let [render_area, divider_area, remain] = Layout::vertical([
@@ -244,7 +288,8 @@ impl<W: StatefulWidget<State = bool> + Clone> Widget for &VerticalList<W> {
                         Constraint::Min(0),
                     ])
                     .areas(area);
-                    item.render(render_area, buf, &mut (self.selected() == Some(idx)));
+
+                    item.render(render_area, buf, &mut state);
                     if idx + 1 < self.list.len() {
                         // render divider
                         render_divider(divider_area, buf);
@@ -258,11 +303,11 @@ impl<W: StatefulWidget<State = bool> + Clone> Widget for &VerticalList<W> {
                         Constraint::Min(0),
                     ])
                     .areas(area);
-                    item.render(render_area, buf, &mut (self.selected() == Some(idx)));
+                    item.render(render_area, buf, &mut state);
                     return false;
                 } else {
                     // cannot fits, fill the rest area with gray background
-                    Fill::new(VerticalList::<W>::NOT_ENOUGH_SPACE_BG).render(area, buf);
+                    Fill::new(VerticalList::<S, W>::NOT_ENOUGH_SPACE_BG).render(area, buf);
                     return false;
                 };
                 true

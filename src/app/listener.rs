@@ -5,7 +5,7 @@ use ratatui::{prelude::*, widgets::Paragraph};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::app::sender::Sender;
-use crate::app::task::TaskCommand;
+use crate::app::task::{TaskCommand, TaskStateRenderState};
 use crate::{
     app::task::{TaskFinalStage, TaskResult, TaskState},
     window::app::{FinishState, FinishedTask},
@@ -170,8 +170,23 @@ impl TaskListener {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TaskListenerRanderState {
+    pub page_focused: bool,
+    pub selected: bool,
+}
+
+impl TaskListenerRanderState {
+    pub fn new(page_focused: bool, selected: bool) -> Self {
+        TaskListenerRanderState {
+            page_focused,
+            selected,
+        }
+    }
+}
+
 impl StatefulWidget for &TaskListener {
-    type State = bool; // focused
+    type State = TaskListenerRanderState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         // 渲染只占用3行
         let area = Layout::vertical([
@@ -189,7 +204,11 @@ impl StatefulWidget for &TaskListener {
             // 此处unlock，这样在渲染时不会阻塞其他线程对state的访问
         };
 
-        cloned_state.render(area, buf, state);
+        cloned_state.render(
+            area,
+            buf,
+            &mut TaskStateRenderState::new(state.page_focused, state.selected),
+        );
 
         let text_area =
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(area)[1];

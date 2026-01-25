@@ -1,5 +1,6 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
+use ratatui::style::palette::tailwind;
 use ratatui::{
     text::Text,
     widgets::{HighlightSpacing, List, ListItem, ListState, Widget},
@@ -30,7 +31,8 @@ impl PageList {
 
     pub const PAGE_COUNT: usize = 2;
 
-    const SELECTED_STYLE: Style = Style::new().bg(Color::LightBlue).fg(Color::Black);
+    const FOCUSED_SELECTED_STYLE: Style = Style::new().bg(Color::LightBlue).fg(Color::Black);
+    const UNFOCUSED_SELECTED_STYLE: Style = Style::new().bg(tailwind::GRAY.c500).fg(Color::Black);
 
     // ----------------------- CONSTRUCT ------------------------
 
@@ -157,8 +159,14 @@ impl Widget for &mut PageList {
     where
         Self: Sized,
     {
+        let highlight_style = if self.entered() {
+            PageList::UNFOCUSED_SELECTED_STYLE
+        } else {
+            PageList::FOCUSED_SELECTED_STYLE
+        };
+
         let list = List::new(self.items.clone())
-            .highlight_style(PageList::SELECTED_STYLE)
+            .highlight_style(highlight_style)
             .highlight_spacing(HighlightSpacing::Always);
 
         <List as StatefulWidget>::render(list, area, buf, &mut self.selected);
